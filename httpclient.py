@@ -23,6 +23,7 @@ import socket
 import re
 # you may use urllib to encode data appropriately
 import urllib
+import urlparse
 
 def help():
     print "httpclient.py [GET/POST] [URL]\n"
@@ -34,19 +35,24 @@ class HTTPResponse(object):
 
 class HTTPClient(object):
     #def get_host_port(self,url):
+    GET_REQUEST_TEMPLATE = "GET {path} HTTP/1.1\r\n" + "Host:{host}:{port}\r\n" + "Content-Length:0\r\n" + "\r\n"
+    POST_REQUEST_TEMPLATE = "POST {path} HTTP/1.1\r\n" + "Host:{host}:{port}\r\n" + "Content-Length:{content_length}\r\n" + "Content-Type:{content_type}\r\n" + "\r\n" + "{body}"
+    ENCODING = "utf-8"
+
 
     def connect(self, host, port):
-        # use sockets!
-        return None
+        # use sockets
+        self.sock = socket.socket()
+        self.sock.connect( (host,port) )
 
     def get_code(self, data):
-        return None
+        return data.split("\r\n")[0].split(" ")[1] 
 
     def get_headers(self,data):
-        return None
+        return data.split("\r\n\r\n")[0]
 
     def get_body(self, data):
-        return None
+        return data.split("\r\n\r\n").pop()
 
     # read everything from the socket
     def recvall(self, sock):
@@ -61,13 +67,66 @@ class HTTPClient(object):
         return str(buffer)
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
+
+        host = urlparse.urlparse(url).hostname
+        port = urlparse.urlparse(url).port
+        path = urlparse.urlparse(url).path
+
+        if not port:
+            port = 80
+
+        if not path:
+            path = "/"
+
+        self.connect(host,port)
+
+        self.sock.sendall(bytearray(self.generateGETRequest(path,host,port), self.ENCODING))
+        data = self.recvall(self.sock)
+
+        code = int(self.get_code(data))
+        body = str(self.get_body(data))
+
+        print(data)
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
+        
+        host = urlparse.urlparse(url).hostname
+        port = urlparse.urlparse(url).port
+        path = urlparse.urlparse(url).path
+
+        if not port:
+            port = 80
+
+        if not path:
+            path = "/"
+
+        self.connect(host,port)
+
+        if args:
+            body = urllib.urlencode(args);
+            content_length = len(body)
+            content_type   = "application/x-www-form-urlencoded"
+
+        else:
+            body = ""
+            content_length = 0
+            content_type   = "application/x-www-form-urlencoded"
+
+        print("======")
+        print(self.generatePOSTRequest(path,host,port, content_length , content_type, body))
+        print("======")
+        
+        self.sock.sendall(bytearray(self.generatePOSTRequest(path,host,port, content_length , content_type, body), self.ENCODING))
+        data = self.recvall(self.sock)
+
+        print("+++++")
+        print(data)
+        print("+++++")
+
+        code = int(self.get_code(data))
+        body = str(self.get_body(data))
+
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
@@ -76,6 +135,12 @@ class HTTPClient(object):
         else:
             return self.GET( url, args )
     
+    def generateGETRequest(self, path, host, port):
+        return self.GET_REQUEST_TEMPLATE.format(path = path, host = host, port = port)
+
+    def generatePOSTRequest(self,path, host, port, content_length, content_type, body):
+        return self.POST_REQUEST_TEMPLATE.format(path = path, host = host, port = port, content_length = content_length, content_type = content_type, body = body)
+
 if __name__ == "__main__":
     client = HTTPClient()
     command = "GET"
